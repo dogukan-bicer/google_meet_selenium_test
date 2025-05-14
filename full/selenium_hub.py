@@ -18,16 +18,24 @@ from datetime import datetime  # Ekran görüntüsü için
 from urllib.parse import urlparse
 import os
 import cv2  # OpenCV; ekran görüntüsü alma işlemi için
-
-# Yeni eklenen kısımlar (pyiqa, PIL ve ImageTk ile ilgili)
 import pyiqa
 from PIL import Image, ImageTk
 import torchvision.transforms as transforms
 import torch
-
 import base64
-
 from pydub import AudioSegment
+import os
+import torch
+import torch.nn.functional as F
+from PIL import Image
+from transformers import AutoImageProcessor, AutoModel
+
+# Cihaz ayarı
+_device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# DINOv2 model ve işlemcisi (BASE sürüm)
+_processor = AutoImageProcessor.from_pretrained('facebook/dinov2-large')
+_model = AutoModel.from_pretrained('facebook/dinov2-large').to(_device)
 
 # Ayarlar
 # HUB_HOST = "localhost"
@@ -53,7 +61,7 @@ import numpy as np
 
 
 DEFAULT_EMAIL = "*******"
-DEFAULT_PASSWORD = "******"
+DEFAULT_PASSWORD = "*****"
 
 # Global driver ve fullscreen durumu
 driver = None
@@ -424,7 +432,7 @@ from scipy.spatial.distance import cosine
 # 1. TRILL modelini bir kez yükle
 _trill_model = hub.load("https://tfhub.dev/google/nonsemantic-speech-benchmark/trill/3")
 
-def compare_audio(file1, file2, sample_rate=16000):
+def compare_audio_files(file1, file2, sample_rate=16000):
     try:
         # 2. Sesleri yükle
         ref, _ = librosa.load(file1, sr=sample_rate, mono=True)
@@ -622,11 +630,67 @@ class SeleniumGridMeetApp(tk.Tk):
 
         # Global log mesajı fonksiyonunu, log ekranına yazacak şekilde atıyoruz.
         self.log_message = lambda msg, ip=None: global_log_message(msg, self.log_text, ip)
+        
+        # --- MENÜ ÇUBUĞU EKLENİYOR ---
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+
+        compare_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Resim Karşılaştırma", menu=compare_menu)
+        compare_menu.add_command(label="Karşılaştırma Penceresini Aç", command=self.open_compare_window)
+        
+         # Ses karşılaştırma
+        audio_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ses Karşılaştırma", menu=audio_menu)
+        audio_menu.add_command(label="Penceresini Aç", command=self.open_compare_audio_window)
+        # --------------------------------
 
         self.refresh_nodes()
-        
-    
+       
+    def open_compare_audio_window(self):
+        top = tk.Toplevel(self)
+        top.title("Ses Karşılaştırma")
+        top.geometry("400x400")
+        ttk.Label(top, text="Karşılaştırmak için iki ses dosyası seçin:").pack(pady=5)
+        audios = sorted([f for f in os.listdir('.') if f.endswith('.mp3')], key=os.path.getmtime, reverse=True)[:10]
+        display=[f"{f}" for f in audios]
+        self.audio_list = tk.Listbox(top, selectmode=tk.MULTIPLE, width=50, height=10)
+        for item in display: self.audio_list.insert(tk.END,item)
+        self.audio_list.pack(pady=5)
+        ttk.Button(top, text="Karşılaştır", command=lambda: self.do_compare_audio(top,audios)).pack(pady=5)
 
+    def do_compare_audio(self, window, files):
+        sel = self.audio_list.curselection()
+        if len(sel) != 2:
+            messagebox.showwarning("Uyarı", "Lütfen tam olarak iki ses dosyası seçin.")
+            return
+        f1, f2 = files[sel[0]], files[sel[1]]
+
+        # Burada unpack edelim:
+        score, error = compare_audio_files(f1, f2)
+        if error:
+            messagebox.showerror("Hata", error)
+            return
+
+        # Skoru pencereye bastırın:
+        if hasattr(self, 'audio_score_label'):
+            self.audio_score_label.destroy()
+        self.audio_score_label = ttk.Label(
+            window,
+            text=f"Benzerlik: %{score:.2f}",
+            font=(None, 12, "bold")
+        )
+        self.audio_score_label.pack(pady=10)
+
+        # İki dosya adını da gösterin
+        if hasattr(self, 'audio_files_frame'):
+            self.audio_files_frame.destroy()
+        self.audio_files_frame = ttk.Frame(window)
+        self.audio_files_frame.pack(pady=5)
+        ttk.Label(self.audio_files_frame, text=f1).pack(side=tk.LEFT, padx=10)
+        ttk.Label(self.audio_files_frame, text=f2).pack(side=tk.LEFT, padx=10)
+
+        
     def refresh_nodes(self):
         self.node_list.delete(0, tk.END)
         self.log_message("Node'lar sorgulanıyor...")
@@ -728,7 +792,7 @@ class SeleniumGridMeetApp(tk.Tk):
             
             file1, file2 = audio_files
             self.log_message(f"Karşılaştırılan dosyalar: {file1}, {file2}")
-            score, error = compare_audio(file1, file2)
+            score, error = compare_audio_files(file1, file2)
         
             if score is not None:
                 ip1 = file1.split('_')[0]
@@ -740,11 +804,82 @@ class SeleniumGridMeetApp(tk.Tk):
                 self.log_message(f"Hata: {error}")
         threading.Thread(target=task, daemon=True).start()
     
-        
+    # -----------------------------
+    # Karşılaştırma penceresini aç
+    # -----------------------------
+    
+    def open_compare_window(self):
+        """Yeni Toplevel pencerede en son PNG’leri listeler ve karşılaştırma yapar."""
+        top = tk.Toplevel(self)
+        top.title("Resim Karşılaştırma")
+        top.geometry("400x300")
+
+        ttk.Label(top, text="Karşılaştırmak için iki farklı IP’ye ait resmi seçin:").pack(pady=5)
+
+        # En son 10 PNG dosyasını alıp, yanında IP’siyle listbox’a ekliyoruz
+        pngs = sorted(
+            [f for f in os.listdir('.') if f.endswith('.png')],
+            key=os.path.getmtime,
+            reverse=True
+        )[:10]
+        display_items = []
+        for fn in pngs:
+            ip = fn.split('_')[0]
+            display_items.append(f"{fn}    ({ip})")
+
+        self.compare_listbox = tk.Listbox(top, selectmode=tk.MULTIPLE, width=50, height=10)
+        for item in display_items:
+            self.compare_listbox.insert(tk.END, item)
+        self.compare_listbox.pack(pady=5)
+
+        btn = ttk.Button(top, text="Karşılaştır", command=lambda: self.do_compare(top, pngs))
+        btn.pack(pady=5)
+
+    def do_compare(self, window, pngs):
+        sel = self.compare_listbox.curselection()
+        if len(sel) != 2:
+            messagebox.showwarning("Uyarı", "Lütfen tam olarak iki resim seçin.")
+            return
+
+        file1, file2 = pngs[sel[0]], pngs[sel[1]]
+        ip1, ip2 = file1.split('_')[0], file2.split('_')[0]
+        if ip1 == ip2:
+            messagebox.showerror("Hata", "Aynı IP'den iki resim seçilemez.")
+            return
+
+        # Burada dönüşün tuple olduğunu varsayıp unpack ediyoruz:
+        similarity, _ = compare_images_with_dinov2(file1, file2)
+
+        # Kendi sonuç penceremizi oluşturuyoruz:
+        result = tk.Toplevel(self)
+        result.title("Benzerlik Sonucu")
+        result.geometry("700x500")
+
+        text = f"{file1} ({ip1})  vs  {file2} ({ip2})\nBenzerlik: %{similarity:.2f}"
+        ttk.Label(result, text=text, font=("Arial", 12, "bold")).pack(pady=10)
+
+        # Resimleri yan yana göster
+        img_frame = ttk.Frame(result)
+        img_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+        for path in (file1, file2):
+            try:
+                img = Image.open(path)
+                img.thumbnail((320, 320))
+                photo = ImageTk.PhotoImage(img)
+                lbl = ttk.Label(img_frame, image=photo)
+                lbl.image = photo
+                lbl.pack(side=tk.LEFT, padx=10)
+            except Exception as e:
+                ttk.Label(img_frame, text=f"Resim yüklenemedi:\n{e}").pack(side=tk.LEFT, padx=10)
+
+        ttk.Button(result, text="Kapat", command=result.destroy).pack(pady=10)
+        window.destroy()
+
+
 # -----------------------------
 # Görüntü kalitesi testi
 # -----------------------------
-
     def calculate_quality_test(self):
         def task():
             quality, info = calculate_screenshot_quality()
@@ -772,60 +907,62 @@ class SeleniumGridMeetApp(tk.Tk):
                     self.log_message(f"Hata: {e}", ip="Bilinmiyor")
         threading.Thread(target=task, daemon=True).start()
 
-import os
-import torch
-import torch.nn.functional as F
-from PIL import Image
-from transformers import AutoImageProcessor, AutoModel
-
-# Cihaz ayarı
-_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# DINOv2 model ve işlemcisi (BASE sürüm)
-_processor = AutoImageProcessor.from_pretrained('facebook/dinov2-large')
-_model = AutoModel.from_pretrained('facebook/dinov2-large').to(_device)
 
 def compare_last_two_screenshots(log_func):
-    """
-    DINOv2 (facebook/dinov2-large) kullanarak son iki ekran görüntüsünü karşılaştırır.
-    CLS token'dan çıkarılan özelliklerle kosinüs benzerliği döner.
-    """
-    try:
-        # Son 2 PNG dosyasını bul
-        png_files = sorted(
-            [f for f in os.listdir('.') if f.endswith('.png')],
-            key=os.path.getmtime,
-            reverse=True
-        )[:2]
+        """
+        DINOv2 (facebook/dinov2-large) kullanarak son iki ekran görüntüsünü karşılaştırır.
+        CLS token'dan çıkarılan özelliklerle kosinüs benzerliği döner.
+        """
+        try:
+            # Son 2 PNG dosyasını bul
+            png_files = sorted(
+                [f for f in os.listdir('.') if f.endswith('.png')],
+                key=os.path.getmtime,
+                reverse=True
+            )[:2]
 
-        if len(png_files) < 2:
-            return None, "Karşılaştırma için en az iki ekran görüntüsü gerekli!"
-        
-        ip1 = png_files[0].split('_')[0]
-        ip2 = png_files[1].split('_')[0]
-        if ip1 == ip2:
-            return None, "Aynı IP'den ekran görüntüleri karşılaştırılamaz!"
+            if len(png_files) < 2:
+                return None, "Karşılaştırma için en az iki ekran görüntüsü gerekli!"
+            
+            ip1 = png_files[0].split('_')[0]
+            ip2 = png_files[1].split('_')[0]
+            if ip1 == ip2:
+                return None, "Aynı IP'den ekran görüntüleri karşılaştırılamaz!"
 
-        # Görüntüleri yükle ve yeniden boyutlandır
-        img1 = Image.open(png_files[0]).convert('RGB').resize((600, 600))
-        img2 = Image.open(png_files[1]).convert('RGB').resize((600, 600))
+            # Görüntüleri yükle ve yeniden boyutlandır
+            img1 = Image.open(png_files[0]).convert('RGB').resize((600, 600))
+            img2 = Image.open(png_files[1]).convert('RGB').resize((600, 600))
 
-        # Görüntüleri işleme ve modele ver
-        inputs = _processor(images=[img1, img2], return_tensors="pt").to(_device)
+            # Görüntüleri işleme ve modele ver
+            inputs = _processor(images=[img1, img2], return_tensors="pt").to(_device)
 
-        with torch.no_grad():
-            outputs = _model(**inputs)
-            features = outputs.last_hidden_state[:, 0, :]  # CLS token kullanımı
+            with torch.no_grad():
+                outputs = _model(**inputs)
+                features = outputs.last_hidden_state[:, 0, :]  # CLS token kullanımı
 
-        # Kosinüs benzerliği hesapla
-        similarity = F.cosine_similarity(features[0], features[1], dim=0).item()
-        similarity_percent = max(similarity * 100,0)  # normalize et
+            # Kosinüs benzerliği hesapla
+            similarity = F.cosine_similarity(features[0], features[1], dim=0).item()
+            similarity_percent = max(similarity * 100,0)  # normalize et
 
-        return similarity_percent, (png_files[0], png_files[1])
+            return similarity_percent, (png_files[0], png_files[1])
 
-    except Exception as e:
-        log_func(f"DINOv2 ile karşılaştırma hatası: {e}")
+        except Exception as e:
+            log_func(f"DINOv2 ile karşılaştırma hatası: {e}")
         return None, f"Karşılaştırma hatası: {e}"
+# Yardımcı fonksiyon (mevcut compare_last_two_screenshots’dan ayırıyoruz)
+def compare_images_with_dinov2(img1_path, img2_path):
+    """
+    İki dosya yolu alır, DINOv2 ile özellik çıkarıp kosinüs benzerliği döner.
+    Dönen değer 0–100 arası normalize edilmiş yüzde.
+    """
+    img1 = Image.open(img1_path).convert('RGB').resize((600, 600))
+    img2 = Image.open(img2_path).convert('RGB').resize((600, 600))
+    inputs = _processor(images=[img1, img2], return_tensors="pt").to(_device)
+    with torch.no_grad():
+        outputs = _model(**inputs)
+        feats = outputs.last_hidden_state[:, 0, :]
+    sim = F.cosine_similarity(feats[0], feats[1], dim=0).item()
+    return max(sim * 100, 0), None
 
 def main():
     if not check_hub_ready():
