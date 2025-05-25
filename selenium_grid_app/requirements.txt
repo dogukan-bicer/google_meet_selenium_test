@@ -1,0 +1,8 @@
+selenium
+pillow
+numpy
+scikit-image
+torch
+torchvision
+sounddevice
+scipy
