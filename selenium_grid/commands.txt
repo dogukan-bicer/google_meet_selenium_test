@@ -1,5 +1,0 @@
-java -jar selenium-server-standalone-3.7.1.jar -role hub
-
-java -jar selenium-server-standalone-3.7.1.jar -role node -hub http://192.168.1.22:4444/grid/register -browser "browserName=chrome,platform=WINDOWS" -port 5555 
-
-java -jar selenium-server-standalone-3.7.1.jar -role node -hub http://192.168.1.22:4444/grid/register -browser "browserName=chrome,platform=ubuntu" -port 6666 
