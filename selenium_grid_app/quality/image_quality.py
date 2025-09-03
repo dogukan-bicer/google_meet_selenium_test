@@ -34,16 +34,58 @@ def compare_last_two_screenshots(log_func):
         log_func(f"DINOv2 hatası: {e}")
         return None, str(e)
 
+import torch
+import torch.nn.functional as F
+from PIL import Image
+import open_clip
+
+# Device setup
+_device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Load OpenCLIP model and preprocessing transforms
+# Here using ViT-B-32 architecture with OpenAI-pretrained weights
+_model_openclip, _, _preprocess = open_clip.create_model_and_transforms(
+    model_name="ViT-B-32", pretrained="openai"
+)
+_model_openclip = _model_openclip.to(_device).eval()
+
+# Function to compare two image files using OpenCLIP
+def compare_image_files_openclip(img1_path: str, img2_path: str) -> float:
+    """
+    Takes two image file paths, extracts features via OpenCLIP,
+    and returns cosine similarity as a percentage between 0 and 100.
+    """
+    # Load and preprocess images
+    img1 = Image.open(img1_path).convert("RGB")
+    img2 = Image.open(img2_path).convert("RGB")
+    tensor1 = _preprocess(img1).unsqueeze(0).to(_device)
+    tensor2 = _preprocess(img2).unsqueeze(0).to(_device)
+
+    # Extract features
+    with torch.no_grad():
+        feat1 = _model_openclip.encode_image(tensor1)
+        feat2 = _model_openclip.encode_image(tensor2)
+
+    # Normalize features
+    feat1 = feat1 / feat1.norm(dim=-1, keepdim=True)
+    feat2 = feat2 / feat2.norm(dim=-1, keepdim=True)
+
+    # Compute cosine similarity
+    sim = F.cosine_similarity(feat1, feat2, dim=-1).item()
+    # Convert to [0, 100]
+    similarity_percent = max(sim * 100, 0.0)
+    return similarity_percent
+
+# Example usage:
+# print(compare_image_files_openclip("path/to/img1.jpg", "path/to/img2.jpg"))
 
 
 import torch
 import torch.nn.functional as F
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel
-
 # Cihaz ayarı
 _device = "cuda" if torch.cuda.is_available() else "cpu"
-
 # DINOv2 model ve işlemcisi (BASE sürüm)
 _processor = AutoImageProcessor.from_pretrained('facebook/dinov2-large')
 _model = AutoModel.from_pretrained('facebook/dinov2-large').to(_device)
@@ -62,6 +104,25 @@ def compare_image_files_dinov2(img1_path, img2_path) -> float:
         feats = outputs.last_hidden_state[:, 0, :]
     sim = F.cosine_similarity(feats[0], feats[1], dim=0).item()
     return max(sim * 100, 0)
+
+# DINOv2 model ve işlemcisi (BASE sürüm)
+_processor_base = AutoImageProcessor.from_pretrained('facebook/dinov2-base')
+_model_base = AutoModel.from_pretrained('facebook/dinov2-base').to(_device)
+# Yardımcı fonksiyon (mevcut compare_last_two_screenshots’dan ayırıyoruz)
+def compare_image_files_dinov2_base(img1_path, img2_path) -> float:
+    """
+    İki dosya yolu alır, DINOv2 ile özellik çıkarıp kosinüs benzerliği döner.
+    Dönen değer 0-100 arası normalize edilmiş yüzde.
+    """
+    img1 = Image.open(img1_path).convert('RGB')
+    img2 = Image.open(img2_path).convert('RGB')
+    inputs = _processor_base(images=[img1, img2], return_tensors="pt").to(_device)
+    with torch.no_grad():
+        outputs = _model_base(**inputs)
+        feats = outputs.last_hidden_state[:, 0, :]
+    sim = F.cosine_similarity(feats[0], feats[1], dim=0).item()
+    return max(sim * 100, 0)
+
 
 
 from DISTS_pytorch import DISTS
