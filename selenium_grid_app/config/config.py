@@ -9,7 +9,7 @@ HUB_COMMAND = f"java -jar selenium-server-standalone-3.7.1.jar -role hub -host {
 
 # Varsayılan kullanıcı bilgileri
 DEFAULT_EMAIL = "seleniumrtctest@gmail.com"
-DEFAULT_PASSWORD = "Test_1234"
+DEFAULT_PASSWORD = "******"
 
 # Global durum (not: kullanımı dikkatli yap!)
 driver = None
@@ -17,4 +17,5 @@ is_fullscreen = False
 
 def set_driver(drv):
     global driver
+
     driver = drv
