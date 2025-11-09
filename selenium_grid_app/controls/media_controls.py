@@ -1,52 +1,64 @@
 from config.config import driver
 import config.config as cfg
 import time
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from drivers.remote_driver import get_node_ip_from_grid
 
 # -----------------------------
 # Mikrofon ve Kamera Kontrolleri (Ayrı Fonksiyonlar)
 # -----------------------------
 def toggle_mic(driver, log_func):
-    driver = cfg.driver  # Global driver'ı kullanıyoruz
+    """Doğrudan CTRL+D kısayolunu göndererek mikrofonu toggle eder."""
+    driver = cfg.driver
     node_ip = get_node_ip_from_grid(driver, lambda msg: None)
     start = time.time()
+    if driver is None:
+        log_func("Driver yok, mikrofon kısayolu gönderilemedi.", ip=node_ip)
+        return
     try:
-        elements = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CLASS_NAME, "VYBDae-Bz112c-RLmnJb"))
-        )
-        if len(elements) > 1:
-            elements[1].click()
-            latency = int((time.time() - start)*1000)
-            log_func(f"Mikrofon togglendi. Gecikme: {latency} ms", ip=node_ip)
-        else:
-            latency = int((time.time() - start)*1000)
-            log_func(f"Mikrofon elementi bulunamadı. (Gecikme: {latency} ms)", ip=node_ip)
-    except Exception as e:
+        # Odaklamaya çalış (body)
+        try:
+            driver.execute_script("document.body && document.body.focus && document.body.focus();")
+        except Exception:
+            pass
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys('d').key_up(Keys.CONTROL).perform()
         latency = int((time.time() - start)*1000)
-        log_func(f"Mikrofon toggle hatası: {e} (Gecikme: {latency} ms)", ip=node_ip)
+        log_func(f"CTRL+D gönderildi (mikrofon). Gecikme: {latency} ms", ip=node_ip)
+    except Exception as e:
+        # Alternatif gönderim
+        try:
+            driver.find_element("tag name", "body").send_keys(Keys.CONTROL, 'd')
+            latency = int((time.time() - start)*1000)
+            log_func(f"CTRL+D alternatif yöntemle gönderildi. Gecikme: {latency} ms (Önceki hata: {e})", ip=node_ip)
+        except Exception as e2:
+            latency = int((time.time() - start)*1000)
+            log_func(f"Mikrofon kısayolu başarısız: {e2} (İlk hata: {e}) (Gecikme: {latency} ms)", ip=node_ip)
 
 def toggle_cam(driver, log_func):
-    driver = cfg.driver  # Global driver'ı kullanıyoruz
+    """Doğrudan CTRL+E kısayolunu göndererek kamerayı toggle eder."""
+    driver = cfg.driver
     node_ip = get_node_ip_from_grid(driver, lambda msg: None)
     start = time.time()
+    if driver is None:
+        log_func("Driver yok, kamera kısayolu gönderilemedi.", ip=node_ip)
+        return
     try:
-        elements = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CLASS_NAME, "VYBDae-Bz112c-RLmnJb"))
-        )
-        if len(elements) > 3:
-            elements[3].click()
-            latency = int((time.time() - start)*1000)
-            log_func(f"Kamera togglendi. Gecikme: {latency} ms", ip=node_ip)
-        else:
-            latency = int((time.time() - start)*1000)
-            log_func(f"Kamera elementi bulunamadı. (Gecikme: {latency} ms)", ip=node_ip)
-    except Exception as e:
+        try:
+            driver.execute_script("document.body && document.body.focus && document.body.focus();")
+        except Exception:
+            pass
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys('e').key_up(Keys.CONTROL).perform()
         latency = int((time.time() - start)*1000)
-        log_func(f"Kamera toggle hatası: {e} (Gecikme: {latency} ms)", ip=node_ip)
+        log_func(f"CTRL+E gönderildi (kamera). Gecikme: {latency} ms", ip=node_ip)
+    except Exception as e:
+        try:
+            driver.find_element("tag name", "body").send_keys(Keys.CONTROL, 'e')
+            latency = int((time.time() - start)*1000)
+            log_func(f"CTRL+E alternatif yöntemle gönderildi. Gecikme: {latency} ms (Önceki hata: {e})", ip=node_ip)
+        except Exception as e2:
+            latency = int((time.time() - start)*1000)
+            log_func(f"Kamera kısayolu başarısız: {e2} (İlk hata: {e}) (Gecikme: {latency} ms)", ip=node_ip)
 
 # -----------------------------
 # Toggle Fullscreen Fonksiyonu
