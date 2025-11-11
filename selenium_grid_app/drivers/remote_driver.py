@@ -4,6 +4,7 @@ from selenium import webdriver
 import requests
 from urllib.parse import urlparse
 from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,47 +15,69 @@ from utils.grid_utils import get_node_ip_from_grid
 from config.config import set_driver
 
 # -----------------------------
-# Remote Driver Kurulumu (Chrome için)
+# Remote Driver Kurulumu (Chrome ve Edge için)
 # -----------------------------
 
 def remote_setup_driver(browser, platform, log_func):
     """Uzaktan WebDriver kurulumunu yapar."""
     driver = cfg.driver  # Global driver'ı kullanıyoruz
+    options = None
+    node_ip = None # Hata almaması için başta tanımlanıyor
+
     if browser.lower() == "chrome":
         options = ChromeOptions()
         options.set_capability("browserName", "chrome")
         options.set_capability("platformName", platform)
-        # Grid node kendi binary'sini kullanıyorsa binary_location'a gerek yok.
+    
+    elif browser.lower() == "edge" or browser.lower() == "microsoftedge":
+        # Edge Options kullanıyoruz
+        options = EdgeOptions()
+        options.set_capability("browserName", "MicrosoftEdge")
+        options.set_capability("platformName", platform)
+        # Edge de Chromium tabanlı olduğu için Chrome ayarlarının çoğunu alabilir
         
+    if options is not None:
+        # Ortak Ayarlar
         options.add_argument("--use-fake-ui-for-media-stream")
         options.add_argument("--disable-notifications")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        
-        # WebDriver tespitini engellemek için
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_argument("--disable-infobars")
-        
-        # User-Agent ayarı; güncel Chrome sürümüymüş gibi gösterir (örnek: Chrome 135)
-        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.42 Safari/537.36")
+        # Edge/Chrome için güncel User-Agent:
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.42 Safari/537.36 Edg/135.0.2845.0")
         
         print(f"..Remote driver kurulumu başlatılıyor: {browser} / {platform}")
         print("/////driver:", driver)
-        node_ip = get_node_ip_from_grid(driver, None)  # IP'yi sessizce al
+        
+        # IP'yi Grid'den almayı deniyoruz
         try:
+            # Hata oluşsa bile 'node_ip' değişkeninin tanımlı olması için try bloğu içinde alınır.
+            node_ip = get_node_ip_from_grid(driver, None) 
+        except Exception:
+             node_ip = "Bilinmiyor"
+
+        try:
+            # Remote WebDriver'ı başlat
             driver = webdriver.Remote(command_executor=HUB_WD_URL, options=options)
-            log_func(f"Remote driver kuruluyor: {browser} / {platform}",ip=node_ip)
+            log_func(f"Remote driver kuruluyor: {browser} / {platform}", ip=node_ip)
             print(f"****Remote driver başarıyla kuruldu: {browser} / {platform} (IP: {node_ip})")
             print("*****driver:", driver)
+            
+            # Anti-tespit script'i
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             set_driver(driver)
             return driver
+            
         except Exception as e:
-            log_func(f"Remote driver kurulamadı: {e}",ip=node_ip)
+            # Hata durumunda, 'node_ip' zaten yukarıda tanımlı
+            log_func(f"Remote driver kurulamadı: {e}", ip=node_ip)
             return None
+    
     else:
-        log_func(f"Hata: {browser} tarayıcısı desteklenmiyor!",ip=node_ip)
+        # Tarayıcı desteklenmiyorsa (Burada 'node_ip' tanımlı olduğu için hata vermez)
+        log_func(f"Hata: {browser} tarayıcısı desteklenmiyor!", ip=node_ip)
         return None
 
 # -----------------------------
