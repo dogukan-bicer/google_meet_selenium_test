@@ -1,10 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
-from quality.image_quality import compare_image_files_dinov2, compare_image_files_dists, compare_image_files_ssim
 import threading
 from PIL import Image as PILImage, ImageTk
-from audio.compare_audio import AudioComparer
 from PIL import Image, ImageTk
 
 class CompareWindows:
@@ -67,6 +65,7 @@ class CompareWindows:
             return
 
         # Burada dönüşün tuple olduğunu varsayıp unpack ediyoruz:
+        from quality.image_quality import compare_image_files_dinov2
         similarity = compare_image_files_dinov2(file1, file2)
 
         # Kendi sonuç penceremizi oluşturuyoruz:
@@ -132,6 +131,7 @@ class CompareWindows:
             return
         f1, f2 = files[sel[0]], files[sel[1]]
 
+        from audio.compare_audio import AudioComparer
         score, error = AudioComparer.compare_audio_files(f1, f2)
         if error:
             messagebox.showerror("Hata", error)

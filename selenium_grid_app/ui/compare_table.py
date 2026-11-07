@@ -5,13 +5,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image as PILImage, ImageTk
 
-from quality.image_quality import (
-    compare_image_files_dinov2_base,
-    compare_image_files_dinov2,
-    compare_image_files_dists,
-    compare_image_files_ssim,
-    compare_image_files_openclip
-)
 from utils.csv_utils import save_results_to_csv
 from utils.correlation_utils import compute_correlations_for_pairs
 
@@ -117,6 +110,14 @@ class ImageComparer:
         threading.Thread(target=self._populate_table, daemon=True).start()
 
     def _populate_table(self):
+        # Import ML models only when the user starts the comparison.
+        from quality.image_quality import (
+            compare_image_files_dinov2_base,
+            compare_image_files_dinov2,
+            compare_image_files_dists,
+            compare_image_files_ssim,
+            compare_image_files_openclip,
+        )
         for w in self.frame_table.winfo_children(): w.destroy()
         self.results.clear()
         self._draw_headers()

@@ -1,0 +1,5 @@
+-r requirements.txt
+-r requirements-vision.txt
+matplotlib>=3.8
+psutil>=5.9
+pynvml>=11.5

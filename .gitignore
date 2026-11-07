@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+se-config.toml
+
+# IDE and operating system files
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime and generated artifacts
+*.log
+*.mp3
+*.webm
+recordings/
+/results/
+temp_results.csv
+image_quality_results.xlsx
+dataset/nits_iqa/results/full_nits_iqa_*.csv
+dataset/nits_iqa/results/perf_*.csv
+dataset/nits_iqa/results/decision_*.csv
+dataset/nits_iqa/results/roc_curves.png
+
+# Superseded bundled Grid server; current launcher downloads Selenium Server via Selenium Manager
+selenium-server-3.7.0.zip

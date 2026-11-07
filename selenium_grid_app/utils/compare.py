@@ -1,8 +1,6 @@
 import threading
 import os
 from PIL import Image, ImageTk
-from quality.image_quality import compare_image_files_dinov2
-from audio.compare_audio import AudioComparer
 from tkinter import messagebox
 
 class ScreenshotComparer:
@@ -61,6 +59,8 @@ class ScreenshotComparer:
             if ip1 == ip2:
                 return None, "Aynı IP’den karşılaştırılamaz!"
 
+            # Load the ML stack only when the user requests an image comparison.
+            from quality.image_quality import compare_image_files_dinov2
             ret = compare_image_files_dinov2(pngs[0], pngs[1])
             if isinstance(ret, tuple):
                 similarity, error = ret

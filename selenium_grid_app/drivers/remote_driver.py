@@ -85,7 +85,7 @@ def remote_setup_driver(browser, platform, log_func):
 # -----------------------------
 def create_meeting(email, password, browser, platform, log_func):
     driver = cfg.driver  # Global driver'ı kullanıyoruz
-    print(f"create_meeting fonksiyonu çağrıldı: {email}, {password}, {browser}, {platform}")
+    print(f"create_meeting fonksiyonu çağrıldı: {email}, {browser}, {platform}")
     print(f"Global driver: {driver}")
     driver = remote_setup_driver(browser, platform, log_func)
     cfg.driver = driver  # Global driver'ı güncelle

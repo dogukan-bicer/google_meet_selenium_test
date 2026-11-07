@@ -1,16 +1,12 @@
 import os
 import threading
-import librosa
-import tensorflow as tf
-import tensorflow_hub as hub
-from scipy.spatial.distance import cosine
 
 class AudioComparer:
     """
     TRILLsson tabanlı ses kalitesi karşılaştırma sınıfı.
     """
-    # Modeli sınıf yüklenirken bir kez yükle
-    _trill_model = hub.load("https://tfhub.dev/google/nonsemantic-speech-benchmark/trill/3")
+    # Keep optional audio/ML dependencies out of the desktop app's startup path.
+    _trill_model = None
 
     def __init__(self, log_func, label_widget=None, sample_rate=16000):
         self.log_func = log_func
@@ -19,19 +15,33 @@ class AudioComparer:
 
     @staticmethod
     def _load_audio(file_path, sr):
+        import librosa
         return librosa.load(file_path, sr=sr, mono=True)
+
+    @classmethod
+    def _load_model(cls):
+        if cls._trill_model is None:
+            import tensorflow_hub as hub
+            cls._trill_model = hub.load(
+                "https://tfhub.dev/google/nonsemantic-speech-benchmark/trill/3"
+            )
+        return cls._trill_model
 
     @classmethod
     def compare_audio_files(cls, file1, file2, sample_rate=16000):
         try:
+            import tensorflow as tf
+            from scipy.spatial.distance import cosine
+
             ref, _ = cls._load_audio(file1, sample_rate)
             deg, _ = cls._load_audio(file2, sample_rate)
 
             ref_tensor = tf.convert_to_tensor(ref, dtype=tf.float32)[tf.newaxis, :]
             deg_tensor = tf.convert_to_tensor(deg, dtype=tf.float32)[tf.newaxis, :]
 
-            ref_embed = cls._trill_model(samples=ref_tensor, sample_rate=sample_rate)["embedding"]
-            deg_embed = cls._trill_model(samples=deg_tensor, sample_rate=sample_rate)["embedding"]
+            model = cls._load_model()
+            ref_embed = model(samples=ref_tensor, sample_rate=sample_rate)["embedding"]
+            deg_embed = model(samples=deg_tensor, sample_rate=sample_rate)["embedding"]
 
             ref_vec = tf.reduce_mean(ref_embed, axis=1).numpy().squeeze()
             deg_vec = tf.reduce_mean(deg_embed, axis=1).numpy().squeeze()

@@ -1,0 +1,6 @@
+torch>=2.5
+torchvision>=0.20
+scikit-image>=0.23
+transformers>=4.44
+open-clip-torch>=2.26
+DISTS-pytorch>=0.1
